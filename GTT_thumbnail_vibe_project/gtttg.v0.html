@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GTT Thumbnail Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a202c; /* Dark background */
+            color: #e2e8f0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top */
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #2d3748; /* Slightly lighter dark background */
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 1200px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #4299e1; /* Blue spinner */
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-top: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .image-grid {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 16px; /* Space between images */
+            margin-top: 20px;
+            width: 100%;
+        }
+        .image-wrapper {
+            position: relative;
+            width: calc((100% - 4 * 16px) / 5);
+            padding-top: calc(((100% - 4 * 16px) / 5) * 9 / 16); /* Dynamic padding for 16:9 */
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 5px 10px rgba(0, 0, 0, 0.2);
+            flex-shrink: 0;
+            cursor: pointer;
+            transition: transform 0.2s ease-in-out;
+        }
+        .image-wrapper:hover {
+            transform: scale(1.05);
+        }
+
+        /* Responsive Grid Adjustments */
+        @media (max-width: 1200px) { .image-wrapper { width: calc((100% - 3 * 16px) / 4); padding-top: calc(((100% - 3 * 16px) / 4) * 9 / 16); } }
+        @media (max-width: 992px) { .image-wrapper { width: calc((100% - 2 * 16px) / 3); padding-top: calc(((100% - 2 * 16px) / 3) * 9 / 16); } }
+        @media (max-width: 768px) { .image-wrapper { width: calc((100% - 1 * 16px) / 2); padding-top: calc(((100% - 1 * 16px) / 2) * 9 / 16); } }
+        @media (max-width: 480px) { .image-wrapper { width: 100%; padding-top: 56.25%; } }
+
+        .image-wrapper img {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 8px;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.9);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000;
+            opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-content { position: relative; max-width: 90vw; max-height: 80vh; /* Make space for thumbnails */ display: flex; justify-content: center; align-items: center; }
+        .modal-image { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px; }
+        .close-button {
+            position: absolute; top: 10px; right: 10px; background-color: rgba(255, 255, 255, 0.8); color: #1a202c;
+            border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 20px; font-weight: bold;
+            cursor: pointer; display: flex; justify-content: center; align-items: center; z-index: 1001;
+            transition: background-color 0.3s ease, transform 0.3s ease;
+        }
+        .close-button:hover { background-color: white; transform: scale(1.1); }
+
+        /* Modal Thumbnail Styles */
+        .modal-thumbnails-container {
+            width: 90%; max-width: 1000px; display: flex; overflow-x: auto; gap: 10px;
+            padding: 10px; margin-top: 15px;
+        }
+        .modal-thumbnail {
+            width: 106px; height: 60px; /* 16:9 aspect ratio */ object-fit: cover; border-radius: 4px;
+            cursor: pointer; border: 3px solid transparent; flex-shrink: 0;
+            transition: border-color 0.3s ease, transform 0.2s ease;
+        }
+        .modal-thumbnail:hover { transform: scale(1.05); }
+        .modal-thumbnail.active { border-color: #4299e1; transform: scale(1.05); }
+
+        /* Form Styles */
+        .form-group { width: 100%; max-width: 800px; margin-bottom: 1.5rem; }
+        textarea, input[type="number"] {
+            width: 100%; background-color: #1a202c; border: 1px solid #4a5568; border-radius: 8px;
+            padding: 12px; color: #e2e8f0; font-size: 1rem; transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        textarea:focus, input[type="number"]:focus {
+            outline: none; border-color: #4299e1; box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.5);
+        }
+        
+        #enhancedPromptContainer {
+            width: 100%; max-width: 800px; margin-top: 1.5rem; background-color: #1a202c;
+            border-radius: 8px; padding: 1rem; text-align: left; border: 1px solid #4a5568;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-4xl font-bold mb-2">GTT Thumbnail Generator</h1>
+        <p class="text-gray-400 mb-8">Create stunning 16:9 thumbnails for any topic using AI.</p>
+        
+        <div class="form-group">
+            <div class="flex justify-between items-center mb-2">
+                 <label for="promptInput" class="block text-left font-semibold">Enter meta-prompt:</label>
+                 <button id="suggestIdeaBtn" class="px-3 py-1 text-sm font-semibold text-blue-300 bg-blue-900/50 rounded-lg shadow hover:bg-blue-800/50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition-all duration-200 disabled:bg-gray-600">Suggest Idea ✨</button>
+            </div>
+            <textarea id="promptInput" rows="3" class="w-full" placeholder="e.g., A knight fighting a dragon">A heroic knight in shining armor defending a castle from a giant, fire-breathing dragon.</textarea>
+        </div>
+
+        <div class="flex flex-wrap justify-center gap-4 mb-6">
+            <div>
+                <label for="numCalls" class="block text-sm font-medium text-gray-400">API Calls</label>
+                <input type="number" id="numCalls" value="3" min="1" max="5" class="w-24 text-center">
+            </div>
+            <div>
+                <label for="imagesPerCall" class="block text-sm font-medium text-gray-400">Images per Call</label>
+                <input type="number" id="imagesPerCall" value="4" min="1" max="4" class="w-24 text-center">
+            </div>
+        </div>
+
+        <button id="generateImageBtn" class="px-8 py-4 text-lg font-bold text-white bg-blue-600 rounded-xl shadow-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 transform hover:scale-105 transition-all duration-300 disabled:bg-gray-500 disabled:scale-100 disabled:cursor-not-allowed">Generate Images</button>
+        
+        <div id="status" class="mt-4 h-6"></div>
+
+        <div id="enhancedPromptContainer" class="hidden">
+            <h3 class="font-semibold text-lg mb-2 text-gray-300">Enhanced Prompt:</h3>
+            <p id="enhancedPromptText" class="text-gray-400 text-sm"></p>
+        </div>
+
+        <div id="imageContainer" class="image-grid"></div>
+        
+        <button id="saveAllImagesBtn" class="mt-8 px-8 py-4 text-lg font-bold text-white bg-green-600 rounded-xl shadow-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400 focus:ring-opacity-75 transform hover:scale-105 transition-all duration-300" style="display: none;">
+            Save All Images
+        </button>
+    </div>
+
+    <div id="imageModal" class="modal-overlay">
+        <div class="modal-content">
+            <img id="modalImage" src="" alt="Enlarged Image" class="modal-image">
+            <button id="closeModalBtn" class="close-button">&times;</button>
+        </div>
+        <div id="modalThumbnailsContainer" class="modal-thumbnails-container"></div>
+    </div>
+
+    <script>
+        const generateImageBtn = document.getElementById('generateImageBtn');
+        const suggestIdeaBtn = document.getElementById('suggestIdeaBtn');
+        const imageContainer = document.getElementById('imageContainer');
+        const saveAllImagesBtn = document.getElementById('saveAllImagesBtn');
+        const imageModal = document.getElementById('imageModal');
+        const modalImage = document.getElementById('modalImage');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const modalThumbnailsContainer = document.getElementById('modalThumbnailsContainer');
+        const promptInput = document.getElementById('promptInput');
+        const numCallsInput = document.getElementById('numCalls');
+        const imagesPerCallInput = document.getElementById('imagesPerCall');
+        const statusDiv = document.getElementById('status');
+        const enhancedPromptContainer = document.getElementById('enhancedPromptContainer');
+        const enhancedPromptText = document.getElementById('enhancedPromptText');
+        
+        let generatedImageUrls = [];
+        let currentImageIndex = -1;
+
+        function updateModalView(newIndex) {
+            if (newIndex < 0 || newIndex >= generatedImageUrls.length || newIndex === currentImageIndex) return;
+            currentImageIndex = newIndex;
+            modalImage.src = generatedImageUrls[currentImageIndex];
+            const thumbnails = document.querySelectorAll('.modal-thumbnail');
+            thumbnails.forEach((thumb, idx) => {
+                const isActive = (idx === currentImageIndex);
+                thumb.classList.toggle('active', isActive);
+                if (isActive) {
+                    thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            });
+        }
+
+        const handleKeyPress = (e) => {
+            if (!imageModal.classList.contains('visible') || generatedImageUrls.length === 0) return;
+            e.preventDefault(); 
+            let newIndex = currentImageIndex;
+            switch (e.key) {
+                case 'ArrowLeft': case 'ArrowUp':
+                    newIndex = currentImageIndex - 1; break;
+                case 'ArrowRight': case 'ArrowDown':
+                    newIndex = currentImageIndex + 1; break;
+                case 'Home':
+                    newIndex = 0; break;
+                case 'End':
+                    newIndex = generatedImageUrls.length - 1; break;
+                case 'Escape':
+                    hideModal(); return;
+            }
+            const loopedIndex = (newIndex + generatedImageUrls.length) % generatedImageUrls.length;
+            updateModalView(loopedIndex);
+        };
+
+        const showModal = (index) => {
+            modalThumbnailsContainer.innerHTML = '';
+            generatedImageUrls.forEach((url, i) => {
+                const thumb = document.createElement('img');
+                thumb.src = url;
+                thumb.className = 'modal-thumbnail';
+                thumb.alt = `Thumbnail ${i + 1}`;
+                thumb.addEventListener('click', () => updateModalView(i));
+                modalThumbnailsContainer.appendChild(thumb);
+            });
+            imageModal.classList.add('visible');
+            document.addEventListener('keydown', handleKeyPress);
+            updateModalView(index);
+        };
+
+        const hideModal = () => {
+            imageModal.classList.remove('visible');
+            document.removeEventListener('keydown', handleKeyPress);
+            modalThumbnailsContainer.innerHTML = '';
+        };
+
+        closeModalBtn.addEventListener('click', hideModal);
+        imageModal.addEventListener('click', (e) => {
+            if (e.target === imageModal) hideModal();
+        });
+
+        const getTimestamp = () => new Date().toISOString().replace(/[-:.]/g, "").replace("T", "_").substring(0, 15);
+        
+        saveAllImagesBtn.addEventListener('click', () => {
+            if (generatedImageUrls.length === 0) return;
+            const folderName = getTimestamp();
+            generatedImageUrls.forEach((imageUrl, index) => {
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                link.download = `thumbnail_${folderName}_${index + 1}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        });
+
+        async function callGemini(instruction) {
+             const payload = { contents: [{ role: "user", parts: [{ text: instruction }] }] };
+             const apiKey = ""; // Canvas provides this
+             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+             const response = await fetch(apiUrl, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(payload)
+             });
+             const result = await response.json();
+             if (result.candidates && result.candidates.length > 0 && result.candidates[0].content.parts.length > 0) {
+                 return result.candidates[0].content.parts[0].text;
+             } else {
+                 throw new Error("AI response was empty or invalid.");
+             }
+        }
+
+        async function generateSimilarMetaPrompt() {
+            const currentPrompt = promptInput.value;
+            if (!currentPrompt) {
+                statusDiv.textContent = 'Please enter a meta-prompt first.';
+                statusDiv.classList.add('text-red-400');
+                return;
+            }
+            suggestIdeaBtn.disabled = true;
+            suggestIdeaBtn.innerHTML = 'Thinking...';
+            statusDiv.textContent = 'Brainstorming a new idea...';
+            try {
+                const instruction = `Rewrite the following idea for an image prompt to be similar, but with a slightly different creative direction or subject. Keep it concise, just a single sentence. Do not add any extra conversational text or labels. Original idea: "${currentPrompt}"`;
+                const newPrompt = await callGemini(instruction);
+                promptInput.value = newPrompt.trim();
+                statusDiv.textContent = 'New idea generated!';
+            } catch (error) {
+                console.error("Failed to generate similar meta-prompt:", error);
+                statusDiv.textContent = 'Could not generate an idea.';
+            } finally {
+                suggestIdeaBtn.disabled = false;
+                suggestIdeaBtn.innerHTML = 'Suggest Idea ✨';
+            }
+        }
+
+        async function enhancePrompt(metaPrompt) {
+            statusDiv.textContent = 'Enhancing prompt...';
+            const instruction = `Based on the user's idea, create a detailed and vivid prompt for an AI image generator. The prompt should describe a high-quality, stylized quasi-real illustration with an ethereal quality. It needs to be dramatic and dynamic, mentioning specific actions, character expressions, and environmental details. Suggest varied background color schemes or settings. The final output MUST be a single paragraph of text and nothing else. User's idea: "${metaPrompt}"`;
+            return await callGemini(instruction);
+        }
+
+        suggestIdeaBtn.addEventListener('click', generateSimilarMetaPrompt);
+
+        generateImageBtn.addEventListener('click', async () => {
+            const metaPrompt = promptInput.value;
+            if (!metaPrompt) {
+                statusDiv.textContent = 'Please enter a meta-prompt.';
+                statusDiv.classList.add('text-red-400');
+                return;
+            }
+
+            generateImageBtn.disabled = true;
+            generateImageBtn.textContent = 'Working...';
+            statusDiv.textContent = '';
+            statusDiv.classList.remove('text-red-400');
+            imageContainer.innerHTML = '<div class="loading-spinner"></div>';
+            saveAllImagesBtn.style.display = 'none';
+            enhancedPromptContainer.classList.add('hidden');
+            generatedImageUrls = [];
+
+            try {
+                const enhancedPrompt = await enhancePrompt(metaPrompt);
+                enhancedPromptText.textContent = enhancedPrompt;
+                enhancedPromptContainer.classList.remove('hidden');
+
+                statusDiv.textContent = 'Generating images...';
+                const finalPromptForImagen = `${enhancedPrompt} The image MUST be in a landscape orientation with an EXACT 16:9 aspect ratio, with dimensions PRECISELY 3840 pixels wide by 2160 pixels tall (4K resolution).`;
+                const allPredictions = [];
+                for (let i = 0; i < parseInt(numCallsInput.value, 10); i++) {
+                    statusDiv.textContent = `Running image batch ${i + 1} of ${numCallsInput.value}...`;
+                    const payload = { instances: { prompt: finalPromptForImagen }, parameters: { "sampleCount": parseInt(imagesPerCallInput.value, 10) } };
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const result = await response.json();
+                    if (result.predictions && result.predictions.length > 0) {
+                        allPredictions.push(...result.predictions);
+                    }
+                }
+
+                statusDiv.textContent = `Generated ${allPredictions.length} images.`;
+                if (allPredictions.length > 0) {
+                    imageContainer.innerHTML = '';
+                    allPredictions.forEach((prediction, index) => {
+                        if (prediction.bytesBase64Encoded) {
+                            const imageUrl = `data:image/png;base64,${prediction.bytesBase64Encoded}`;
+                            generatedImageUrls.push(imageUrl);
+                            
+                            const imageWrapper = document.createElement('div');
+                            imageWrapper.className = 'image-wrapper';
+                            
+                            const img = document.createElement('img');
+                            img.src = imageUrl;
+                            img.alt = `Generated Thumbnail ${index + 1}`;
+                            img.addEventListener('click', () => showModal(index));
+                            
+                            imageWrapper.appendChild(img);
+                            imageContainer.appendChild(imageWrapper);
+                        }
+                    });
+                    saveAllImagesBtn.style.display = 'inline-block';
+                } else {
+                    imageContainer.innerHTML = '<p class="text-red-400">The AI failed to generate images. Please try a different prompt.</p>';
+                }
+
+            } catch (error) {
+                console.error("Generation failed:", error);
+                imageContainer.innerHTML = `<p class="text-red-400">An error occurred: ${error.message}</p>`;
+                statusDiv.textContent = 'Generation failed.';
+            } finally {
+                generateImageBtn.disabled = false;
+                generateImageBtn.textContent = 'Generate Images';
+            }
+        });
+    </script>
+</body>
+</html>
